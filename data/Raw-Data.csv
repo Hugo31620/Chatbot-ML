@@ -1,0 +1,16 @@
+Variable,Type,Modalities
+Fever,WHO-Symptom,0 | 1
+Tiredness,WHO-Symptom,0 | 1
+Dry-Cough,WHO-Symptom,0 | 1
+Difficulty-in-Breathing,WHO-Symptom,0 | 1
+Sore-Throat,WHO-Symptom,0 | 1
+Pains,Other-Symptom,0 | 1
+Nasal-Congestion,Other-Symptom,0 | 1
+Runny-Nose,Other-Symptom,0 | 1
+Diarrhea,Other-Symptom,0 | 1
+None_Experiencing,Other-Symptom,0 | 1
+Age,Demographic,0-9 | 10-19 | 20-24 | 25-59 | 60+
+Gender,Demographic,Male | Female | Transgender
+Severity,Clinical,None | Mild | Moderate | Severe
+Contact,Clinical,Yes | No | Dont-Know
+Country,Geographic,France | Italy | China | USA | Spain | Germany | UK | India | Iran | Other-Country
