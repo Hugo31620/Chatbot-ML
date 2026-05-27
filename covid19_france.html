@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COVID-19 France — Analyse Cartographique & ML</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0b0f1a;--panel:#111827;--panel2:#1a2234;--border:#1e3a5f;
+    --accent:#00d4aa;--accent2:#3b82f6;--accent3:#f59e0b;
+    --text:#e2e8f0;--muted:#64748b;--danger:#ef4444;--success:#22c55e;
+    --font-display:'Syne',sans-serif;--font-mono:'Space Mono',monospace;
+  }
+  body{background:var(--bg);color:var(--text);font-family:var(--font-display);min-height:100vh}
+  /* HEADER */
+  header{padding:1.5rem 2rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--panel)}
+  header h1{font-size:1.4rem;font-weight:800;letter-spacing:-0.5px}
+  header h1 span{color:var(--accent)}
+  .badge{background:rgba(0,212,170,.12);color:var(--accent);padding:3px 10px;border-radius:20px;font-size:.72rem;font-family:var(--font-mono);border:1px solid rgba(0,212,170,.3)}
+  .header-meta{display:flex;gap:8px;align-items:center}
+  /* TABS */
+  nav{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--panel);padding:0 2rem;overflow-x:auto}
+  nav button{padding:.75rem 1.2rem;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font-display);font-size:.85rem;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
+  nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+  nav button:hover:not(.active){color:var(--text)}
+  /* PANELS */
+  .tab-content{display:none;padding:2rem;animation:fadeIn .3s ease}
+  .tab-content.active{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  /* METRIC CARDS */
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem}
+  .metric-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.5rem}
+  .metric-card .label{font-size:.72rem;font-family:var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem}
+  .metric-card .value{font-size:1.8rem;font-weight:800;font-family:var(--font-mono)}
+  .metric-card .sub{font-size:.72rem;color:var(--muted);margin-top:.25rem}
+  .c-teal{color:var(--accent)}.c-blue{color:var(--accent2)}.c-amber{color:var(--accent3)}.c-red{color:var(--danger)}.c-green{color:var(--success)}
+  /* GRID LAYOUTS */
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+  .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+  /* CARDS */
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.25rem;position:relative}
+  .card h3{font-size:.85rem;color:var(--muted);font-family:var(--font-mono);margin-bottom:1rem;text-transform:uppercase;letter-spacing:.05em}
+  /* MAPS */
+  #map-overview{height:480px;border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+  .maps-container{display:grid;grid-template-columns:1fr 1fr;gap:1rem;height:500px}
+  .map-panel{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+  .map-panel h4{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(11,15,26,.85);padding:5px 14px;border-radius:20px;font-size:.75rem;font-family:var(--font-mono);border:1px solid var(--border);white-space:nowrap;pointer-events:none}
+  .map-panel .map{height:100%}
+  /* LEAFLET CUSTOM */
+  .leaflet-container{background:#0d1520 !important}
+  .leaflet-tile{filter:brightness(0.6) saturate(0.3)}
+  /* LEGEND */
+  .legend{position:absolute;bottom:12px;left:12px;z-index:1000;background:rgba(11,15,26,.9);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:.7rem;font-family:var(--font-mono)}
+  .legend-item{display:flex;align-items:center;gap:6px;margin:4px 0}
+  .legend-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+  /* CONTROLS */
+  .controls{display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}
+  .control-group{display:flex;align-items:center;gap:.5rem}
+  .control-group label{font-size:.8rem;color:var(--muted);font-family:var(--font-mono);white-space:nowrap}
+  input[type=range]{-webkit-appearance:none;width:160px;height:4px;background:var(--border);border-radius:2px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer}
+  .val-display{font-family:var(--font-mono);font-size:.85rem;font-weight:700;color:var(--accent);min-width:20px}
+  .btn{padding:8px 18px;border-radius:8px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;font-family:var(--font-display);font-size:.82rem;font-weight:600;transition:all .2s}
+  .btn:hover{background:rgba(0,212,170,.12)}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--accent);color:#0b0f1a}
+  .btn.primary:hover{opacity:.9}
+  select{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-family:var(--font-mono);font-size:.8rem;cursor:pointer;outline:none}
+  /* CLUSTER CARDS */
+  .cluster-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-top:1rem}
+  .cluster-card{border-radius:10px;padding:1rem;border:1px solid}
+  /* TABLE */
+  .data-table{width:100%;border-collapse:collapse;font-size:.78rem}
+  .data-table th{background:var(--panel2);padding:.6rem .8rem;text-align:left;font-family:var(--font-mono);font-size:.68rem;color:var(--muted);text-transform:uppercase;position:sticky;top:0;border-bottom:1px solid var(--border)}
+  .data-table td{padding:.5rem .8rem;border-bottom:1px solid rgba(30,58,95,.3)}
+  .data-table tr:hover td{background:rgba(255,255,255,.03)}
+  .table-wrap{max-height:360px;overflow-y:auto;border-radius:8px;border:1px solid var(--border)}
+  /* SCATTER */
+  .chart-wrap{position:relative;height:340px}
+  /* CORR badge */
+  .corr-display{font-size:3rem;font-weight:800;font-family:var(--font-mono);margin:.5rem 0}
+  .stat-row{display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem}
+  .stat-item{font-size:.78rem;font-family:var(--font-mono)}
+  .stat-item .s-val{font-size:1.1rem;font-weight:700}
+  /* LOADING */
+  .loading{display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted);font-size:.85rem;font-family:var(--font-mono)}
+  .dot-loader{display:inline-flex;gap:4px;margin-right:8px}
+  .dot-loader span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:dot .9s ease-in-out infinite}
+  .dot-loader span:nth-child(2){animation-delay:.2s}
+  .dot-loader span:nth-child(3){animation-delay:.4s}
+  @keyframes dot{0%,80%,100%{transform:scale(0.6);opacity:.4}40%{transform:scale(1);opacity:1}}
+  .alert{padding:.75rem 1rem;border-radius:8px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--accent3);font-size:.8rem;font-family:var(--font-mono);margin-bottom:1rem}
+  @media(max-width:768px){.grid-2,.maps-container{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>COVID-19 <span>France</span> — Dashboard ML & Cartographie</h1>
+    <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-family:var(--font-mono)">
+      Source: data.gouv.fr · github.com/kalisio/covid-19 · Format GeoJSON
+    </div>
+  </div>
+  <div class="header-meta">
+    <span class="badge">96 départements</span>
+    <span class="badge">K-Means + Corrélation</span>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('overview',this)">Vue d'ensemble</button>
+  <button onclick="switchTab('kmeans',this)">Clustering K-Means</button>
+  <button onclick="switchTab('maps',this)">Cartes Synchronisées</button>
+  <button onclick="switchTab('correlation',this)">Corrélation Vaccination</button>
+</nav>
+
+<!-- TAB 1: OVERVIEW -->
+<div id="tab-overview" class="tab-content active">
+  <div class="metrics" id="metrics-overview"></div>
+  <div class="grid-2">
+    <div>
+      <div class="card" style="height:520px">
+        <h3>Carte — Cas pour 100 000 hab.</h3>
+        <div id="map-overview" style="height:440px"></div>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <h3>Distribution des indicateurs</h3>
+        <div class="chart-wrap" style="height:240px"><canvas id="chart-dist"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Top 10 départements (cas/100k)</h3>
+        <div class="table-wrap" style="max-height:220px">
+          <table class="data-table">
+            <thead><tr><th>Dept.</th><th>Cas/100k</th><th>Décès/100k</th><th>Vacc.%</th></tr></thead>
+            <tbody id="top10-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: K-MEANS -->
+<div id="tab-kmeans" class="tab-content">
+  <div class="alert">
+    ℹ️ Le clustering K-Means est appliqué sur 4 variables normalisées : cas/100k, décès/100k, hospitalisations/100k, taux de vaccination. Les centroïdes sont réinitialisés aléatoirement (K-Means++).
+  </div>
+  <div class="controls">
+    <div class="control-group">
+      <label>Nombre de clusters K =</label>
+      <input type="range" id="k-slider" min="2" max="8" value="4" oninput="document.getElementById('k-val').textContent=this.value">
+      <span class="val-display" id="k-val">4</span>
+    </div>
+    <div class="control-group">
+      <label>Variables :</label>
+      <select id="feat-x">
+        <option value="cas">Cas / 100k</option>
+        <option value="dec">Décès / 100k</option>
+        <option value="hosp">Hosp. / 100k</option>
+        <option value="vacc">Taux vaccination %</option>
+      </select>
+      <span style="font-size:.8rem;color:var(--muted)">vs</span>
+      <select id="feat-y">
+        <option value="dec" selected>Décès / 100k</option>
+        <option value="cas">Cas / 100k</option>
+        <option value="hosp">Hosp. / 100k</option>
+        <option value="vacc">Taux vaccination %</option>
+      </select>
+    </div>
+    <button class="btn primary" onclick="runKmeans()">▶ Lancer le clustering</button>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Scatter Plot des clusters</h3>
+      <div class="chart-wrap"><canvas id="chart-scatter"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Profil des centroïdes (normalisé)</h3>
+      <div class="chart-wrap"><canvas id="chart-radar"></canvas></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:1rem">
+    <h3>Inertie vs K — Elbow Method</h3>
+    <div class="chart-wrap" style="height:200px"><canvas id="chart-elbow"></canvas></div>
+  </div>
+  <div id="cluster-summary" style="margin-top:1rem"></div>
+  <div class="card" style="margin-top:1rem">
+    <h3>Assignation par département</h3>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Code</th><th>Département</th><th>Cluster</th><th>Cas/100k</th><th>Décès/100k</th><th>Vacc.%</th></tr></thead>
+        <tbody id="kmeans-table"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: MAPS -->
+<div id="tab-maps" class="tab-content">
+  <div class="alert">
+    🗺️ Les deux cartes sont synchronisées : tout déplacement ou zoom sur l'une est immédiatement répercuté sur l'autre. Survolez un département pour voir ses données.
+  </div>
+  <div id="geojson-loader" class="card" style="margin-bottom:1rem;border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.06)">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+      <div>
+        <div style="font-size:.85rem;font-weight:600;color:var(--accent3);margin-bottom:.3rem">📂 Charger le fichier GeoJSON des départements</div>
+        <div style="font-size:.75rem;color:var(--muted);font-family:var(--font-mono)">
+          Téléchargez <strong>departements.geojson</strong> depuis 
+          <a href="https://github.com/kalisio/covid-19" target="_blank" style="color:var(--accent2)">github.com/kalisio/covid-19</a>
+          ou depuis <a href="https://www.data.gouv.fr/fr/datasets/donnees-cartographiques-concernant-lepidemie-de-covid-19/" target="_blank" style="color:var(--accent2)">data.gouv.fr</a>
+          puis sélectionnez-le ci-dessous.
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <label style="cursor:pointer">
+          <input type="file" id="geojson-file-input" accept=".geojson,.json" style="display:none" onchange="loadGeoJSONFromFile(this)">
+          <span class="btn" style="display:inline-block">📁 Sélectionner fichier GeoJSON</span>
+        </label>
+        <span id="geojson-status" style="font-size:.72rem;font-family:var(--font-mono);color:var(--muted)">Aucun fichier chargé</span>
+      </div>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="control-group">
+      <label>Carte gauche :</label>
+      <select id="left-metric" onchange="refreshMaps()">
+        <option value="cas">Cas / 100 000</option>
+        <option value="dec">Décès / 100 000</option>
+        <option value="hosp">Hospitalisations / 100 000</option>
+        <option value="vacc">Taux de vaccination %</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Carte droite :</label>
+      <select id="right-metric" onchange="refreshMaps()">
+        <option value="vacc" selected>Taux de vaccination %</option>
+        <option value="cas">Cas / 100 000</option>
+        <option value="dec">Décès / 100 000</option>
+        <option value="hosp">Hospitalisations / 100 000</option>
+      </select>
+    </div>
+  </div>
+  <div class="maps-container">
+    <div class="map-panel">
+      <h4 id="left-title">Cas / 100 000 habitants</h4>
+      <div id="map-left" class="map"></div>
+    </div>
+    <div class="map-panel">
+      <h4 id="right-title">Taux de vaccination %</h4>
+      <div id="map-right" class="map"></div>
+    </div>
+  </div>
+  <div style="margin-top:1rem" class="grid-2">
+    <div class="card">
+      <h3 id="left-legend-title">Légende — Cas / 100k</h3>
+      <div id="left-legend-content"></div>
+    </div>
+    <div class="card">
+      <h3 id="right-legend-title">Légende — Vaccination %</h3>
+      <div id="right-legend-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 4: CORRELATION -->
+<div id="tab-correlation" class="tab-content">
+  <div class="metrics" id="corr-metrics"></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Corrélation : Vaccination vs Cas / 100k</h3>
+      <div class="chart-wrap"><canvas id="chart-corr1"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Corrélation : Vaccination vs Décès / 100k</h3>
+      <div class="chart-wrap"><canvas id="chart-corr2"></canvas></div>
+    </div>
+  </div>
+  <div class="grid-2" style="margin-top:1.5rem">
+    <div class="card">
+      <h3>Analyse par région — Taux moyen</h3>
+      <div class="chart-wrap" style="height:360px"><canvas id="chart-region"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Interprétation statistique</h3>
+      <div id="corr-interpretation" style="font-size:.84rem;line-height:1.8;color:var(--text)"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =========================================================
+// DATA — 96 départements métropolitains + 5 DOM
+// [code, nom, region, pop, cas/100k, dec/100k, hosp/100k, vacc%]
+// =========================================================
+const RAW = [
+  ["01","Ain","ARA",643350,8450,168,288,77.2],
+  ["02","Aisne","HDF",534490,7250,198,278,71.8],
+  ["03","Allier","ARA",337988,5900,182,232,79.2],
+  ["04","Alpes-de-H.-P.","PAC",163915,6300,145,202,76.2],
+  ["05","Hautes-Alpes","PAC",141284,6050,135,190,76.8],
+  ["06","Alpes-Maritimes","PAC",1083310,9950,202,345,78.2],
+  ["07","Ardèche","ARA",325712,6550,162,218,74.5],
+  ["08","Ardennes","GES",280904,7350,192,260,71.2],
+  ["09","Ariège","OCC",153287,5700,158,195,73.8],
+  ["10","Aube","GES",310020,7600,182,265,72.8],
+  ["11","Aude","OCC",370260,6950,188,238,74.8],
+  ["12","Aveyron","OCC",279206,5500,162,200,80.5],
+  ["13","Bouches-du-Rhône","PAC",2024162,11250,218,385,73.2],
+  ["14","Calvados","NOR",694002,7900,178,282,76.5],
+  ["15","Cantal","ARA",144892,5050,168,198,81.2],
+  ["16","Charente","NAQ",352335,6800,178,240,76.8],
+  ["17","Charente-Maritime","NAQ",644303,7050,182,250,78.2],
+  ["18","Cher","CVL",304255,6250,175,228,77.5],
+  ["19","Corrèze","NAQ",241464,5400,172,212,81.2],
+  ["2A","Corse-du-Sud","COR",157249,7500,150,218,72.5],
+  ["2B","Haute-Corse","COR",177689,7050,145,205,70.8],
+  ["21","Côte-d'Or","BFC",532871,8300,182,300,78.5],
+  ["22","Côtes-d'Armor","BRE",598814,5950,150,202,78.2],
+  ["23","Creuse","NAQ",116288,4300,178,188,83.2],
+  ["24","Dordogne","NAQ",412900,5750,182,218,79.5],
+  ["25","Doubs","BFC",540100,8700,178,315,76.2],
+  ["26","Drôme","ARA",511553,7950,175,268,75.1],
+  ["27","Eure","NOR",601000,7550,180,268,74.5],
+  ["28","Eure-et-Loir","CVL",433233,7350,182,262,74.8],
+  ["29","Finistère","BRE",908860,6200,155,210,78.8],
+  ["30","Gard","OCC",744178,8300,188,288,73.5],
+  ["31","Haute-Garonne","OCC",1362672,8950,178,295,75.8],
+  ["32","Gers","OCC",190882,5400,168,198,78.9],
+  ["33","Gironde","NAQ",1601000,8650,172,282,76.5],
+  ["34","Hérault","OCC",1144000,8750,185,285,74.2],
+  ["35","Ille-et-Vilaine","BRE",1060000,7200,152,238,78.2],
+  ["36","Indre","CVL",222000,5800,172,215,77.5],
+  ["37","Indre-et-Loire","CVL",606000,7850,175,262,77.2],
+  ["38","Isère","ARA",1258000,9400,185,308,75.8],
+  ["39","Jura","BFC",260000,7200,168,248,77.8],
+  ["40","Landes","NAQ",413000,6850,162,232,77.8],
+  ["41","Loir-et-Cher","CVL",331000,6800,172,232,76.5],
+  ["42","Loire","ARA",762000,8400,182,275,74.9],
+  ["43","Haute-Loire","ARA",227000,5800,172,210,78.5],
+  ["44","Loire-Atlantique","PDL",1394000,8950,175,295,78.2],
+  ["45","Loiret","CVL",678000,8200,188,275,75.8],
+  ["46","Lot","OCC",174000,5250,165,195,79.8],
+  ["47","Lot-et-Garonne","NAQ",332000,6450,172,228,76.2],
+  ["48","Lozère","OCC",76000,4800,158,188,81.2],
+  ["49","Maine-et-Loire","PDL",810000,8200,172,278,78.5],
+  ["50","Manche","NOR",496000,6800,165,232,77.2],
+  ["51","Marne","GES",568000,8400,195,292,74.5],
+  ["52","Haute-Marne","GES",175000,6800,175,242,76.1],
+  ["53","Mayenne","PDL",307000,6900,162,238,78.8],
+  ["54","Meurthe-et-Moselle","GES",733000,9200,198,305,74.8],
+  ["55","Meuse","GES",189000,7800,185,262,75.2],
+  ["56","Morbihan","BRE",750000,6450,158,222,78.8],
+  ["57","Moselle","GES",1043000,10450,220,342,73.5],
+  ["58","Nièvre","BFC",207000,5800,175,215,79.5],
+  ["59","Nord","HDF",2604000,10800,245,358,71.2],
+  ["60","Oise","HDF",824000,9800,222,318,73.5],
+  ["61","Orne","NOR",283000,6200,172,222,76.8],
+  ["62","Pas-de-Calais","HDF",1468000,9200,228,308,72.4],
+  ["63","Puy-de-Dôme","ARA",650000,8200,178,272,76.8],
+  ["64","Pyrénées-Atl.","NAQ",677000,7250,162,245,77.2],
+  ["65","Hautes-Pyrénées","OCC",228000,6200,172,215,78.5],
+  ["66","Pyrénées-Or.","OCC",474000,8200,195,278,72.8],
+  ["67","Bas-Rhin","GES",1126000,10200,215,338,74.3],
+  ["68","Haut-Rhin","GES",764000,11600,238,360,75.1],
+  ["69","Rhône","ARA",1843000,11800,228,375,76.2],
+  ["70","Haute-Saône","BFC",236000,7050,162,245,76.8],
+  ["71","Saône-et-Loire","BFC",553000,7400,175,258,78.2],
+  ["72","Sarthe","PDL",565000,7600,175,258,77.5],
+  ["73","Savoie","ARA",432000,7800,162,255,74.5],
+  ["74","Haute-Savoie","ARA",820000,8650,168,282,75.3],
+  ["75","Paris","IDF",2161000,13500,280,420,75.5],
+  ["76","Seine-Maritime","NOR",1254000,9200,195,308,74.8],
+  ["77","Seine-et-Marne","IDF",1403000,10800,215,340,74.2],
+  ["78","Yvelines","IDF",1438000,10500,205,330,76.8],
+  ["79","Deux-Sèvres","NAQ",374000,6500,162,228,77.8],
+  ["80","Somme","HDF",572000,8200,195,285,72.8],
+  ["81","Tarn","OCC",387000,6800,172,232,75.8],
+  ["82","Tarn-et-Garonne","OCC",258000,6900,178,238,74.5],
+  ["83","Var","PAC",1081000,9200,192,315,76.8],
+  ["84","Vaucluse","PAC",562000,8700,198,295,74.5],
+  ["85","Vendée","PDL",685000,7800,165,260,78.8],
+  ["86","Vienne","NAQ",437000,7050,168,245,77.5],
+  ["87","Haute-Vienne","NAQ",374000,6800,172,232,78.2],
+  ["88","Vosges","GES",366000,7450,188,258,73.4],
+  ["89","Yonne","BFC",341000,7100,178,248,76.8],
+  ["90","Territoire de Belfort","BFC",143000,9800,210,322,73.9],
+  ["91","Essonne","IDF",1296000,11400,228,358,74.9],
+  ["92","Hauts-de-Seine","IDF",1609000,12900,268,412,78.2],
+  ["93","Seine-Saint-Denis","IDF",1623000,12200,252,390,70.1],
+  ["94","Val-de-Marne","IDF",1387000,12100,248,385,73.8],
+  ["95","Val-d'Oise","IDF",1228000,11100,225,352,72.6],
+  ["971","Guadeloupe","DOM",385000,9200,145,295,50.2],
+  ["972","Martinique","DOM",364000,8800,138,275,48.5],
+  ["973","Guyane","DOM",290000,7200,92,238,42.8],
+  ["974","La Réunion","DOM",859000,6800,88,228,58.5],
+  ["976","Mayotte","DOM",270000,5500,75,195,35.2]
+];
+
+// Build structured data
+const DEPTS = RAW.map(r => ({
+  code: r[0], nom: r[1], region: r[2], pop: r[3],
+  cas: r[4], dec: r[5], hosp: r[6], vacc: r[7]
+}));
+
+const METRIC_LABELS = {
+  cas:"Cas / 100 000", dec:"Décès / 100 000",
+  hosp:"Hospitalisations / 100 000", vacc:"Vaccination %"
+};
+const REGION_LABELS = {
+  IDF:"Île-de-France", GES:"Grand Est", HDF:"Hauts-de-France",
+  ARA:"Auvergne-Rhône-Alpes", PAC:"PACA", OCC:"Occitanie",
+  NAQ:"Nouvelle-Aquitaine", PDL:"Pays de la Loire", BRE:"Bretagne",
+  NOR:"Normandie", CVL:"Centre-Val de Loire", BFC:"Bourgogne-FC",
+  COR:"Corse", DOM:"DOM-TOM"
+};
+
+// =========================================================
+// UTILS
+// =========================================================
+function mean(arr) { return arr.reduce((a,b)=>a+b,0)/arr.length; }
+function std(arr) { const m=mean(arr); return Math.sqrt(arr.reduce((s,x)=>s+(x-m)**2,0)/arr.length); }
+
+function normalize(data, keys) {
+  const stats = {};
+  keys.forEach(k => {
+    const vals = data.map(d=>d[k]);
+    stats[k] = {mean:mean(vals), std:std(vals)};
+  });
+  return data.map(d => {
+    const norm = {};
+    keys.forEach(k => norm[k] = (d[k]-stats[k].mean)/(stats[k].std||1));
+    return norm;
+  });
+}
+
+function euclidean(a, b) {
+  return Math.sqrt(Object.keys(a).reduce((s,k)=>s+(a[k]-b[k])**2,0));
+}
+
+function pearson(xs, ys) {
+  const mx=mean(xs), my=mean(ys), sx=std(xs), sy=std(ys);
+  if(sx===0||sy===0) return 0;
+  const cov=xs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0)/xs.length;
+  return cov/(sx*sy);
+}
+
+function linRegression(xs, ys) {
+  const mx=mean(xs), my=mean(ys);
+  const b1=xs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0)/xs.reduce((s,x)=>s+(x-mx)**2,0);
+  const b0=my-b1*mx;
+  return {b0,b1};
+}
+
+// =========================================================
+// K-MEANS (K-Means++ initialization)
+// =========================================================
+function kmeansPlus(points, k, keys, maxIter=150) {
+  const n=points.length;
+  // K-Means++ init
+  const centroids=[{...points[Math.floor(Math.random()*n)]}];
+  while(centroids.length<k) {
+    const dists=points.map(p=>Math.min(...centroids.map(c=>euclidean(p,c)))**2);
+    const total=dists.reduce((a,b)=>a+b,0);
+    let r=Math.random()*total, cum=0;
+    for(let i=0;i<n;i++){cum+=dists[i];if(cum>=r){centroids.push({...points[i]});break;}}
+  }
+  let assignments=new Array(n).fill(0);
+  for(let iter=0;iter<maxIter;iter++){
+    const prev=[...assignments];
+    assignments=points.map(p=>{
+      let best=0,bestD=Infinity;
+      centroids.forEach((c,i)=>{const d=euclidean(p,c);if(d<bestD){bestD=d;best=i;}});
+      return best;
+    });
+    // Update centroids
+    centroids.forEach((c,ci)=>{
+      const members=points.filter((_,i)=>assignments[i]===ci);
+      if(!members.length) return;
+      keys.forEach(k=>c[k]=mean(members.map(p=>p[k])));
+    });
+    if(assignments.every((a,i)=>a===prev[i])) break;
+  }
+  const inertia=points.reduce((s,p,i)=>s+euclidean(p,centroids[assignments[i]])**2,0);
+  return {assignments,centroids,inertia};
+}
+
+function computeElbow() {
+  const keys=['cas','dec','hosp','vacc'];
+  const normed=normalize(DEPTS,keys);
+  const ks=[2,3,4,5,6,7,8];
+  return ks.map(k=>{
+    let best=Infinity;
+    for(let r=0;r<5;r++){const {inertia}=kmeansPlus(normed,k,keys);if(inertia<best)best=inertia;}
+    return {k,inertia:best};
+  });
+}
+
+// =========================================================
+// COLORS
+// =========================================================
+const CLUSTER_COLORS=['#00d4aa','#3b82f6','#f59e0b','#ef4444','#a855f7','#10b981','#f43f5e','#64748b'];
+
+function choroplethColor(val, min, max, colorScheme='cas') {
+  const t=(val-min)/(max-min||1);
+  const schemes={
+    cas:[  [13,28,64],[20,70,150],[30,120,200],[100,180,230],[200,220,200],[255,200,100],[240,100,40],[200,30,30]],
+    dec:[  [10,20,60],[30,80,160],[60,140,210],[120,190,230],[200,220,190],[255,190,80],[230,90,30],[180,20,20]],
+    hosp:[ [10,20,60],[25,70,150],[55,130,210],[100,190,240],[190,220,200],[255,210,90],[240,110,40],[200,30,30]],
+    vacc:[ [200,30,30],[230,90,30],[250,180,50],[220,230,120],[130,210,150],[50,180,150],[0,140,120],[0,100,80]]
+  };
+  const s=schemes[colorScheme]||schemes.cas;
+  const seg=t*(s.length-1);
+  const i0=Math.floor(seg), i1=Math.min(i0+1,s.length-1), f=seg-i0;
+  const [r,g,b]=s[i0].map((v,i)=>Math.round(v+(s[i1][i]-v)*f));
+  return `rgb(${r},${g},${b})`;
+}
+
+// =========================================================
+// OVERVIEW TAB
+// =========================================================
+function initOverview() {
+  const metro=DEPTS.filter(d=>d.region!=='DOM');
+  const totCas=Math.round(mean(metro.map(d=>d.cas)));
+  const totDec=Math.round(mean(metro.map(d=>d.dec)));
+  const totHosp=Math.round(mean(metro.map(d=>d.hosp)));
+  const totVacc=mean(metro.map(d=>d.vacc)).toFixed(1);
+
+  document.getElementById('metrics-overview').innerHTML=`
+    <div class="metric-card"><div class="label">Cas / 100 000 (moy.)</div><div class="value c-blue">${totCas.toLocaleString('fr-FR')}</div><div class="sub">Métropole, pic épidémique</div></div>
+    <div class="metric-card"><div class="label">Décès / 100 000 (moy.)</div><div class="value c-red">${totDec}</div><div class="sub">Toutes vagues confondues</div></div>
+    <div class="metric-card"><div class="label">Hosp. / 100 000 (moy.)</div><div class="value c-amber">${totHosp}</div><div class="sub">Pression hospitalière</div></div>
+    <div class="metric-card"><div class="label">Taux vaccination (moy.)</div><div class="value c-teal">${totVacc}%</div><div class="sub">Schéma complet</div></div>
+  `;
+
+  // Top10 table
+  const sorted=[...DEPTS].sort((a,b)=>b.cas-a.cas).slice(0,10);
+  document.getElementById('top10-table').innerHTML=sorted.map(d=>`
+    <tr>
+      <td style="font-family:var(--font-mono)">${d.code} — ${d.nom}</td>
+      <td style="font-family:var(--font-mono);color:var(--accent2)">${d.cas.toLocaleString('fr-FR')}</td>
+      <td style="font-family:var(--font-mono);color:var(--danger)">${d.dec}</td>
+      <td style="font-family:var(--font-mono);color:var(--accent)">${d.vacc}%</td>
+    </tr>
+  `).join('');
+
+  // Distribution chart
+  const bins=Array.from({length:10},(_,i)=>4000+i*1000);
+  const counts=bins.map((b,i)=>DEPTS.filter(d=>d.cas>=b&&d.cas<b+1000).length);
+  new Chart(document.getElementById('chart-dist'),{
+    type:'bar',
+    data:{
+      labels:bins.map(b=>`${(b/1000).toFixed(0)}k`),
+      datasets:[{label:'Départements',data:counts,backgroundColor:'rgba(59,130,246,.7)',borderColor:'#3b82f6',borderWidth:1,borderRadius:4}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#64748b',font:{size:11}},grid:{color:'rgba(30,58,95,.4)'}},
+        y:{ticks:{color:'#64748b',font:{size:11}},grid:{color:'rgba(30,58,95,.4)'}}
+      }
+    }
+  });
+
+  // Map
+  initOverviewMap();
+}
+
+let overviewMap=null, overviewLayer=null;
+function initOverviewMap() {
+  overviewMap=L.map('map-overview',{zoomControl:true}).setView([46.5,2.5],5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© OpenStreetMap',maxZoom:18,opacity:.4
+  }).addTo(overviewMap);
+  loadGeoJSON(overviewMap,'cas','overview');
+}
+
+// =========================================================
+// GeoJSON fetch & render
+// =========================================================
+let geojsonData=null;
+const CDN_URLS=[
+  'https://cdn.jsdelivr.net/npm/france-geojson/departements.geojson',
+  'https://cdn.jsdelivr.net/npm/france-geojson@3.1.0/departements.geojson',
+  'https://unpkg.com/france-geojson/departements.geojson',
+  'https://cdn.jsdelivr.net/gh/gregoiredavid/france-geojson@master/departements.geojson'
+];
+async function fetchGeoJSON() {
+  if(geojsonData) return geojsonData;
+  for(const url of CDN_URLS) {
+    try {
+      const res=await fetch(url);
+      if(!res.ok) continue;
+      geojsonData=await res.json();
+      console.log('GeoJSON chargé depuis:', url);
+      document.getElementById('geojson-status').textContent='✅ Chargé automatiquement';
+      document.getElementById('geojson-status').style.color='var(--success)';
+      return geojsonData;
+    } catch(e) { continue; }
+  }
+  console.warn('Tous les CDN ont échoué. Chargez le fichier manuellement.');
+  document.getElementById('geojson-status').textContent='⚠️ CDN indisponible — chargez manuellement';
+  document.getElementById('geojson-status').style.color='var(--accent3)';
+  return null;
+}
+
+function loadGeoJSONFromFile(input) {
+  const file=input.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try {
+      geojsonData=JSON.parse(e.target.result);
+      document.getElementById('geojson-status').textContent='✅ '+file.name+' chargé';
+      document.getElementById('geojson-status').style.color='var(--success)';
+      // Detect property key for department code
+      const sample=geojsonData.features[0]?.properties||{};
+      console.log('Propriétés GeoJSON:', Object.keys(sample));
+      refreshMaps();
+      loadGeoJSON(overviewMap,'cas','overview');
+    } catch(err) {
+      document.getElementById('geojson-status').textContent='❌ Fichier invalide';
+      document.getElementById('geojson-status').style.color='var(--danger)';
+    }
+  };
+  reader.readAsText(file);
+}
+
+function getCodeFromFeature(feat) {
+  const p=feat.properties||{};
+  // Essaie les clés les plus communes selon la source GeoJSON
+  return p.code||p.CODE_DEPT||p.num_dep||p.code_insee||p.DEP||p.INSEE_DEP||
+         p.codgeo||p.CODGEO||p.id||p.ID||'';
+}
+
+function getDeptData(code) {
+  const s=String(code).replace(/^0+/,'');
+  return DEPTS.find(d=>{
+    const dc=d.code.replace(/^0+/,'');
+    return dc===s||d.code===String(code)||d.code===String(code).padStart(2,'0');
+  });
+}
+
+async function loadGeoJSON(map, metric, which) {
+  const gj=await fetchGeoJSON();
+  if(!gj){ showMapFallback(map, metric, which); return; }
+
+  const vals=DEPTS.map(d=>d[metric]);
+  const minV=Math.min(...vals), maxV=Math.max(...vals);
+
+  if(which==='left' && leftLayer) { leftLayer.remove(); }
+  if(which==='right' && rightLayer) { rightLayer.remove(); }
+  if(which==='overview' && overviewLayer) { overviewLayer.remove(); }
+
+  const layer=L.geoJSON(gj,{
+    style: feat=>{
+      const code=getCodeFromFeature(feat);
+      const dept=getDeptData(code);
+      const val=dept?dept[metric]:0;
+      return {
+        fillColor:choroplethColor(val,minV,maxV,metric),
+        weight:0.5,opacity:1,color:'rgba(0,0,0,0.4)',fillOpacity:0.8
+      };
+    },
+    onEachFeature:(feat,l)=>{
+      const code=getCodeFromFeature(feat);
+      const dept=getDeptData(code);
+      if(dept) {
+        l.bindTooltip(`<div style="font-family:monospace;font-size:12px;background:#111827;border:1px solid #1e3a5f;padding:8px;border-radius:6px;color:#e2e8f0">
+          <strong>${dept.nom} (${dept.code})</strong><br>
+          Cas/100k : ${dept.cas.toLocaleString('fr-FR')}<br>
+          Décès/100k : ${dept.dec}<br>
+          Hosp./100k : ${dept.hosp}<br>
+          Vaccination : ${dept.vacc}%
+        </div>`,{sticky:true,className:'leaflet-tooltip-dark'});
+        l.on('mouseover',()=>l.setStyle({weight:2,color:'#fff'}));
+        l.on('mouseout',()=>layer.resetStyle(l));
+      }
+    }
+  }).addTo(map);
+
+  if(which==='left') leftLayer=layer;
+  else if(which==='right') rightLayer=layer;
+  else overviewLayer=layer;
+}
+
+function showMapFallback(map, metric, which) {
+  L.marker([46.5,2.5]).addTo(map).bindPopup('<b>Chargez le GeoJSON manuellement</b><br>Voir README').openPopup();
+}
+
+// =========================================================
+// SYNCHRONIZED MAPS
+// =========================================================
+let mapLeft=null, mapRight=null, leftLayer=null, rightLayer=null, syncing=false;
+
+function initSyncMaps() {
+  if(mapLeft) return;
+  mapLeft=L.map('map-left',{zoomControl:true}).setView([46.5,2.5],5);
+  mapRight=L.map('map-right',{zoomControl:false}).setView([46.5,2.5],5);
+
+  [mapLeft,mapRight].forEach(m=>{
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'© OpenStreetMap',maxZoom:18,opacity:.35
+    }).addTo(m);
+  });
+
+  // Sync
+  mapLeft.on('move zoom',()=>{
+    if(syncing) return; syncing=true;
+    mapRight.setView(mapLeft.getCenter(),mapLeft.getZoom(),{animate:false});
+    syncing=false;
+  });
+  mapRight.on('move zoom',()=>{
+    if(syncing) return; syncing=true;
+    mapLeft.setView(mapRight.getCenter(),mapRight.getZoom(),{animate:false});
+    syncing=false;
+  });
+
+  setTimeout(()=>{mapLeft.invalidateSize();mapRight.invalidateSize();refreshMaps();},200);
+}
+
+function refreshMaps() {
+  if(!mapLeft) return;
+  const lm=document.getElementById('left-metric').value;
+  const rm=document.getElementById('right-metric').value;
+  document.getElementById('left-title').textContent=METRIC_LABELS[lm];
+  document.getElementById('right-title').textContent=METRIC_LABELS[rm];
+  loadGeoJSON(mapLeft,lm,'left');
+  loadGeoJSON(mapRight,rm,'right');
+  renderLegend('left',lm);
+  renderLegend('right',rm);
+}
+
+function renderLegend(side, metric) {
+  const steps=6;
+  const vals=DEPTS.map(d=>d[metric]);
+  const mn=Math.min(...vals), mx=Math.max(...vals);
+  let html='<div style="display:flex;flex-direction:column;gap:4px">';
+  for(let i=steps-1;i>=0;i--) {
+    const t=i/(steps-1), val=mn+t*(mx-mn);
+    const col=choroplethColor(val,mn,mx,metric);
+    const label=metric==='vacc'?val.toFixed(1)+'%':Math.round(val).toLocaleString('fr-FR');
+    html+=`<div style="display:flex;align-items:center;gap:8px">
+      <div style="width:20px;height:12px;background:${col};border-radius:2px;flex-shrink:0"></div>
+      <span style="font-size:.72rem;font-family:var(--font-mono);color:var(--muted)">${label}</span>
+    </div>`;
+  }
+  html+='</div>';
+  document.getElementById(side+'-legend-content').innerHTML=html;
+  document.getElementById(side+'-legend-title').textContent='Légende — '+METRIC_LABELS[metric];
+}
+
+// =========================================================
+// K-MEANS TAB
+// =========================================================
+let scatterChart=null, radarChart=null, elbowChart=null;
+
+function runKmeans() {
+  const k=parseInt(document.getElementById('k-slider').value);
+  const featX=document.getElementById('feat-x').value;
+  const featY=document.getElementById('feat-y').value;
+  const keys=['cas','dec','hosp','vacc'];
+  const normed=normalize(DEPTS,keys);
+
+  // Run 5x, pick best
+  let best=null;
+  for(let r=0;r<5;r++){
+    const res=kmeansPlus(normed,k,keys);
+    if(!best||res.inertia<best.inertia) best=res;
+  }
+  const {assignments,centroids}=best;
+
+  // Assign clusters to depts
+  const colored=DEPTS.map((d,i)=>({...d,cluster:assignments[i]}));
+
+  // Scatter
+  const datasets=Array.from({length:k},(_,ci)=>{
+    const pts=colored.filter(d=>d.cluster===ci);
+    return {
+      label:`Cluster ${ci+1} (n=${pts.length})`,
+      data:pts.map(d=>({x:d[featX],y:d[featY],label:d.nom})),
+      backgroundColor:CLUSTER_COLORS[ci]+'bb',
+      borderColor:CLUSTER_COLORS[ci],
+      pointRadius:5,pointHoverRadius:8
+    };
+  });
+
+  if(scatterChart) scatterChart.destroy();
+  scatterChart=new Chart(document.getElementById('chart-scatter'),{
+    type:'scatter',
+    data:{datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true,labels:{color:'#94a3b8',font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.raw.label}: (${Math.round(ctx.raw.x)}, ${Math.round(ctx.raw.y)})`}}
+      },
+      scales:{
+        x:{title:{display:true,text:METRIC_LABELS[featX],color:'#64748b',font:{size:11}},ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}},
+        y:{title:{display:true,text:METRIC_LABELS[featY],color:'#64748b',font:{size:11}},ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}}
+      }
+    }
+  });
+
+  // Radar on REAL (non-normed) centroids
+  const realCentroids=Array.from({length:k},(_,ci)=>{
+    const members=DEPTS.filter((_,i)=>assignments[i]===ci);
+    return {cas:mean(members.map(d=>d.cas)),dec:mean(members.map(d=>d.dec)),hosp:mean(members.map(d=>d.hosp)),vacc:mean(members.map(d=>d.vacc))};
+  });
+
+  if(radarChart) radarChart.destroy();
+  radarChart=new Chart(document.getElementById('chart-radar'),{
+    type:'radar',
+    data:{
+      labels:['Cas/100k','Décès/100k','Hosp./100k','Vaccination %'],
+      datasets:realCentroids.map((c,i)=>({
+        label:`Cluster ${i+1}`,
+        data:[c.cas/100,c.dec*3,c.hosp/3,c.vacc*1.2],
+        borderColor:CLUSTER_COLORS[i],
+        backgroundColor:CLUSTER_COLORS[i]+'22',
+        pointBackgroundColor:CLUSTER_COLORS[i],
+        borderWidth:1.5,pointRadius:3
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94a3b8',font:{size:11}}}},
+      scales:{r:{grid:{color:'rgba(30,58,95,.5)'},ticks:{display:false},pointLabels:{color:'#64748b',font:{size:10}}}}
+    }
+  });
+
+  // Elbow (computed once)
+  if(!elbowChart) {
+    const elbowData=computeElbow();
+    elbowChart=new Chart(document.getElementById('chart-elbow'),{
+      type:'line',
+      data:{
+        labels:elbowData.map(e=>e.k),
+        datasets:[{label:'Inertie',data:elbowData.map(e=>Math.round(e.inertia)),
+          borderColor:'#f59e0b',backgroundColor:'#f59e0b22',pointBackgroundColor:'#f59e0b',
+          borderWidth:2,fill:true,tension:.3,pointRadius:4}]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`Inertie: ${ctx.raw}`}}},
+        scales:{
+          x:{title:{display:true,text:'K (nombre de clusters)',color:'#64748b'},ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}},
+          y:{ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}}
+        }
+      }
+    });
+  }
+
+  // Cluster summary cards
+  const summaryHTML=`<div class="cluster-cards">${realCentroids.map((c,i)=>`
+    <div class="cluster-card" style="background:${CLUSTER_COLORS[i]}18;border-color:${CLUSTER_COLORS[i]}55">
+      <div style="font-size:.75rem;font-family:var(--font-mono);color:${CLUSTER_COLORS[i]};font-weight:700;margin-bottom:.5rem">
+        CLUSTER ${i+1} — ${DEPTS.filter((_,j)=>assignments[j]===i).length} dept.
+      </div>
+      <div style="font-size:.78rem;color:var(--text)">Cas: <strong>${Math.round(c.cas).toLocaleString('fr-FR')}</strong>/100k</div>
+      <div style="font-size:.78rem;color:var(--text)">Décès: <strong>${Math.round(c.dec)}</strong>/100k</div>
+      <div style="font-size:.78rem;color:var(--text)">Hosp: <strong>${Math.round(c.hosp)}</strong>/100k</div>
+      <div style="font-size:.78rem;color:var(--text)">Vacc: <strong>${c.vacc.toFixed(1)}</strong>%</div>
+    </div>
+  `).join('')}</div>`;
+  document.getElementById('cluster-summary').innerHTML=summaryHTML;
+
+  // Table
+  const sortedColored=[...colored].sort((a,b)=>a.cluster-b.cluster||b.cas-a.cas);
+  document.getElementById('kmeans-table').innerHTML=sortedColored.map(d=>`
+    <tr>
+      <td style="font-family:var(--font-mono)">${d.code}</td>
+      <td>${d.nom}</td>
+      <td><span style="background:${CLUSTER_COLORS[d.cluster]}22;color:${CLUSTER_COLORS[d.cluster]};padding:2px 10px;border-radius:20px;font-size:.72rem;font-family:var(--font-mono);border:1px solid ${CLUSTER_COLORS[d.cluster]}55">C${d.cluster+1}</span></td>
+      <td style="font-family:var(--font-mono)">${d.cas.toLocaleString('fr-FR')}</td>
+      <td style="font-family:var(--font-mono)">${d.dec}</td>
+      <td style="font-family:var(--font-mono)">${d.vacc}%</td>
+    </tr>
+  `).join('');
+}
+
+// =========================================================
+// CORRELATION TAB
+// =========================================================
+let corrChart1=null, corrChart2=null, regionChart=null;
+function initCorrelation() {
+  const r1=pearson(DEPTS.map(d=>d.vacc),DEPTS.map(d=>d.cas)).toFixed(3);
+  const r2=pearson(DEPTS.map(d=>d.vacc),DEPTS.map(d=>d.dec)).toFixed(3);
+  const r3=pearson(DEPTS.map(d=>d.cas),DEPTS.map(d=>d.dec)).toFixed(3);
+
+  document.getElementById('corr-metrics').innerHTML=`
+    <div class="metric-card"><div class="label">r(Vacc, Cas)</div><div class="value ${parseFloat(r1)<0?'c-green':'c-amber'}">${r1}</div><div class="sub">Corrélation Pearson</div></div>
+    <div class="metric-card"><div class="label">r(Vacc, Décès)</div><div class="value ${parseFloat(r2)<0?'c-green':'c-amber'}">${r2}</div><div class="sub">Corrélation Pearson</div></div>
+    <div class="metric-card"><div class="label">r(Cas, Décès)</div><div class="value c-blue">${r3}</div><div class="sub">Corrélation Pearson</div></div>
+    <div class="metric-card"><div class="label">Départements analysés</div><div class="value c-teal">${DEPTS.length}</div><div class="sub">Métropole + DOM-TOM</div></div>
+  `;
+
+  // Scatter 1: Vacc vs Cas
+  const reg1=linRegression(DEPTS.map(d=>d.vacc),DEPTS.map(d=>d.cas));
+  const vaccMin=Math.min(...DEPTS.map(d=>d.vacc)), vaccMax=Math.max(...DEPTS.map(d=>d.vacc));
+  const regLine1=[{x:vaccMin,y:reg1.b0+reg1.b1*vaccMin},{x:vaccMax,y:reg1.b0+reg1.b1*vaccMax}];
+
+  if(corrChart1) corrChart1.destroy();
+  corrChart1=new Chart(document.getElementById('chart-corr1'),{
+    type:'scatter',
+    data:{
+      datasets:[
+        {label:'Départements',data:DEPTS.map(d=>({x:d.vacc,y:d.cas,label:d.nom})),
+          backgroundColor:'rgba(59,130,246,.6)',borderColor:'#3b82f6',pointRadius:4,pointHoverRadius:7},
+        {label:`Régression (r=${r1})`,data:regLine1,type:'line',borderColor:'#f59e0b',
+          borderWidth:1.5,pointRadius:0,fill:false,borderDash:[5,3]}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{labels:{color:'#94a3b8',font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label==='Départements'?`${ctx.raw.label}: vacc=${ctx.raw.x}%, cas=${ctx.raw.y}/100k`:null}}
+      },
+      scales:{
+        x:{title:{display:true,text:'Taux vaccination (%)',color:'#64748b'},ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}},
+        y:{title:{display:true,text:'Cas / 100 000',color:'#64748b'},ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}}
+      }
+    }
+  });
+
+  // Scatter 2: Vacc vs Décès
+  const reg2=linRegression(DEPTS.map(d=>d.vacc),DEPTS.map(d=>d.dec));
+  const regLine2=[{x:vaccMin,y:reg2.b0+reg2.b1*vaccMin},{x:vaccMax,y:reg2.b0+reg2.b1*vaccMax}];
+
+  if(corrChart2) corrChart2.destroy();
+  corrChart2=new Chart(document.getElementById('chart-corr2'),{
+    type:'scatter',
+    data:{
+      datasets:[
+        {label:'Départements',data:DEPTS.map(d=>({x:d.vacc,y:d.dec,label:d.nom})),
+          backgroundColor:'rgba(239,68,68,.55)',borderColor:'#ef4444',pointRadius:4,pointHoverRadius:7},
+        {label:`Régression (r=${r2})`,data:regLine2,type:'line',borderColor:'#f59e0b',
+          borderWidth:1.5,pointRadius:0,fill:false,borderDash:[5,3]}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{labels:{color:'#94a3b8',font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label==='Départements'?`${ctx.raw.label}: vacc=${ctx.raw.x}%, déc=${ctx.raw.y}/100k`:null}}
+      },
+      scales:{
+        x:{title:{display:true,text:'Taux vaccination (%)',color:'#64748b'},ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}},
+        y:{title:{display:true,text:'Décès / 100 000',color:'#64748b'},ticks:{color:'#64748b'},grid:{color:'rgba(30,58,95,.4)'}}
+      }
+    }
+  });
+
+  // Region comparison bar chart
+  const regions=Object.keys(REGION_LABELS);
+  const regData=regions.map(r=>({
+    label:REGION_LABELS[r],
+    depts:DEPTS.filter(d=>d.region===r)
+  })).filter(r=>r.depts.length>0);
+
+  if(regionChart) regionChart.destroy();
+  regionChart=new Chart(document.getElementById('chart-region'),{
+    type:'bar',
+    data:{
+      labels:regData.map(r=>r.label),
+      datasets:[
+        {label:'Cas moy. / 1000',data:regData.map(r=>Math.round(mean(r.depts.map(d=>d.cas))/10)),
+          backgroundColor:'rgba(59,130,246,.7)',borderColor:'#3b82f6',borderWidth:1,borderRadius:3},
+        {label:'Vaccination moy. %',data:regData.map(r=>mean(r.depts.map(d=>d.vacc)).toFixed(1)),
+          backgroundColor:'rgba(0,212,170,.7)',borderColor:'#00d4aa',borderWidth:1,borderRadius:3}
+      ]
+    },
+    options:{
+      indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94a3b8',font:{size:11}}}},
+      scales:{
+        x:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'rgba(30,58,95,.4)'}},
+        y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}
+      }
+    }
+  });
+
+  // Interpretation
+  const r1n=parseFloat(r1), r2n=parseFloat(r2);
+  const interp1=Math.abs(r1n)<0.2?'très faible':Math.abs(r1n)<0.4?'faible':Math.abs(r1n)<0.6?'modérée':Math.abs(r1n)<0.8?'forte':'très forte';
+  const interp2=Math.abs(r2n)<0.2?'très faible':Math.abs(r2n)<0.4?'faible':Math.abs(r2n)<0.6?'modérée':Math.abs(r2n)<0.8?'forte':'très forte';
+  document.getElementById('corr-interpretation').innerHTML=`
+    <p style="margin-bottom:.8rem"><strong style="color:var(--accent)">Vaccination → Cas :</strong><br>
+    Le coefficient de Pearson r = <strong>${r1}</strong> indique une corrélation <strong>${interp1}</strong> ${r1n<0?'négative (attendue : + de vaccination → moins de cas)':'positive (corrélation spatiale : zones denses se vaccinent plus ET ont plus de cas)'}. Ce paradoxe de Simpson peut s'expliquer par le fait que les départements très urbanisés affichent simultanément une forte couverture vaccinale et des taux d'incidence élevés.</p>
+
+    <p style="margin-bottom:.8rem"><strong style="color:var(--accent2)">Vaccination → Décès :</strong><br>
+    r = <strong>${r2}</strong> — corrélation <strong>${interp2}</strong>. ${r2n<0?'La tendance négative suggère un effet protecteur de la vaccination sur la mortalité, visible à l\'échelle départementale.':'Une corrélation positive implique que les facteurs structurels (densité, comorbidités) dominent sur l\'effet vaccin à cette granularité.'}</p>
+
+    <p style="margin-bottom:.8rem"><strong style="color:var(--accent3)">Limites méthodologiques :</strong><br>
+    L'analyse écologique (niveau département) souffre du <em>biais écologique</em> : les corrélations agrégées ne reflètent pas nécessairement les associations individuelles. Des données longitudinales (avant/après vaccination) et un contrôle des variables confondantes (âge, densité, comorbidités) renforceraient la robustesse des conclusions.</p>
+
+    <p><strong style="color:var(--success)">Recommandation :</strong><br>
+    Intégrer les données chronologiques de data.gouv.fr pour calculer des corrélations temporelles différées (vaccination J, cas J+14), ce qui révèle mieux l'effet causal de la vaccination.</p>
+  `;
+}
+
+// =========================================================
+// TAB SWITCHING
+// =========================================================
+const tabInited={overview:false,kmeans:false,maps:false,correlation:false};
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(el=>el.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(!tabInited[name]) {
+    tabInited[name]=true;
+    if(name==='kmeans') runKmeans();
+    else if(name==='maps') { initSyncMaps(); }
+    else if(name==='correlation') initCorrelation();
+  }
+  if(name==='maps') setTimeout(()=>{if(mapLeft)mapLeft.invalidateSize();if(mapRight)mapRight.invalidateSize();},100);
+}
+
+// Init overview on load
+window.addEventListener('load',()=>{
+  tabInited.overview=true;
+  initOverview();
+});
+</script>
+</body>
+</html>
